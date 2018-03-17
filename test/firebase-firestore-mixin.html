@@ -1,0 +1,165 @@
+<!doctype html>
+<!--
+@license
+Copyright 2016 Google Inc. All Rights Reserved.
+Use of this source code is governed by a BSD-style
+license that can be found in the LICENSE file or at
+https://github.com/firebase/polymerfire/blob/master/LICENSE
+-->
+
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Polymer.FirestoreMixin tests</title>
+    <meta
+     name="viewport"
+     content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+
+    <script src="../../webcomponentsjs/webcomponents-lite.js"></script>
+    <script src="../../web-component-tester/browser.js"></script>
+
+    <link rel="import" href="../firebase-app.html">
+    <link rel="import" href="../firebase-firestore-mixin.html">
+
+    <script>
+      const TEST_NAMESPACE_BASE = 16;
+      const TEST_NAMESPACE_SIZE = 16;
+
+      const testNamespaceArray = new Uint32Array(TEST_NAMESPACE_SIZE);
+      window.crypto.getRandomValues(testNamespaceArray);
+
+      window.TEST_NAMESPACE = testNamespaceArray
+        .map(x => x % TEST_NAMESPACE_BASE)
+        .map(x => x.toString(TEST_NAMESPACE_BASE))
+        .join('');
+    </script>
+  </head>
+  <body>
+    <dom-module id="test-element">
+      <template></template>
+      <script>
+        firebase.initializeApp({
+          projectId: "polymerfire-test",
+          apiKey: "AIzaSyDTP-eiQezleFsV2WddFBAhF_WEzx_8v_g",
+        });
+
+        const defineTestElement = () => {
+          class TestElement extends Polymer.FirestoreMixin(Polymer.Element) {
+            static get is() {
+              return 'test-element';
+            }
+            static get properties() {
+              return {
+                propOne: String,
+                propTwo: {
+                  type: String,
+                  value: 'two',
+                },
+                collectionOne: {
+                  type: Array,
+                  collection: 'collection',
+                },
+                docOne: {
+                  type: Object,
+                  doc: 'collection/doc',
+                },
+                docTwo: {
+                  type: Object,
+                  doc: '{propOne}/doc',
+                },
+                docThree: {
+                  type: Object,
+                  doc: '{propTwo}/doc',
+                  observes: ['propOne'],
+                },
+              };
+            }
+          };
+          customElements.define(TestElement.is, TestElement);
+        };
+
+        window.addEventListener('WebComponentsReady', defineTestElement);
+      </script>
+    </dom-module>
+
+    <test-fixture id="test-element-fixture">
+      <template>
+        <test-element></test-element>
+      </template>
+    </test-fixture>
+
+    <script>
+      suite(
+        `Polymer.FirestoreMixin (namespace ${window.TEST_NAMESPACE})`,
+        () => {
+          let element;
+
+          setup(() => element = fixture('test-element-fixture'));
+
+          suite('reference properties (*Ref)', () => {
+            test(
+              'reference exists for an independent property',
+              () => expect(element.docOneRef).to.be.an('object'),
+            );
+            test(
+              'reference is null for a property with undefined parts' +
+                ' of the path',
+              () => expect(element.docTwoRef).to.equal(null),
+            );
+            test(
+              'reference exists for a property with initially undefined' +
+                'parts after setting setting a value',
+              () => {
+                element.propOne = 'not-undefined';
+                expect(element.docTwoRef).to.be.an('object');
+              },
+            );
+            test(
+              'reference is null after dependent property is set to undefined',
+              () => {
+                element.propOne = 'not-undefined';
+                expect(element.docTwoRef).to.be.an('object');
+                element.propOne = undefined;
+                expect(element.docTwoRef).to.equal(null);
+              },
+            );
+            test(
+              'reference exists for a property with `observes` after' +
+                'setting it\'s value',
+              () => {
+                element.propOne = 'not-undefined';
+                expect(element.docThreeRef).to.be.an('object');
+              }
+            );
+          });
+
+          suite('document values', function () {
+            this.timeout(5000);
+            this.slow(5000);
+
+            test(
+              'value is null for non-existing documents',
+              () => expect(element.docOne).to.equal(null),
+            );
+            test(
+              'value is an empty array for non-existing collections',
+              () => expect(element.collectionOne).to.deep.equal([]),
+            );
+            test(
+              'value is updated after it is set in the database',
+              () => {
+                const validate = () => expect(element.docOne)
+                  .to
+                  .be
+                  .an('object')
+                  .that
+                  .has
+                  .property('test');
+                return element.docOneRef.set({test: 'test'}).then(validate);
+              }
+            );
+          });
+        })
+    </script>
+  </body>
+</html>
